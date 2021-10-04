@@ -9,6 +9,7 @@ void python::common::export_all(py::module& module) {
     export_DeckKeyword(module);
     export_Schedule(module);
     export_Well(module);
+    export_WellProduction(module);
     export_Group(module);
     export_Connection(module);
     export_EclipseConfig(module);

@@ -65,9 +65,18 @@ class TestSchedule(unittest.TestCase):
         self.assertEqual(prod.status(), "OPEN")
 
         sch.shut_well("PROD", 10)
+        self.assertEqual(sch.get_well_status("PROD", 10), "SHUT")
         prod = sch.get_well("PROD", 10)
         self.assertEqual(prod.status(), "SHUT")
 
+    def test_well_production(self):
+        deck  = Parser().parse(test_path('spe3/SPE3CASE1.DATA'))
+        state = EclipseState(deck)
+        sch = Schedule( deck, state )
+        prod_prop = sch.get_well_production("PROD", 3)
+        self.assertEqual(prod_prop.oil_rate, 0.0)
+        self.assertEqual(prod_prop.gas_rate, 6200.0)
+        prod_prop.gas_rate = 1.23
 
     def test_well_names(self):
         deck  = Parser().parse(test_path('spe3/SPE3CASE1.DATA'))

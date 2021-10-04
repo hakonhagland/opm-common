@@ -60,6 +60,7 @@ ext_modules = [
                 'cxx/summary_state.cpp',
                 'cxx/table_manager.cpp',
                 'cxx/well.cpp',
+                'cxx/well_production.cpp',
                 'cxx/emodel_util.cpp',
                 'cxx/builtin_pybind11.cpp',
                 'cxx/export.cpp'

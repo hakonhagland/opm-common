@@ -54,6 +54,18 @@ namespace {
         throw py::key_error( name );
     }
 
+    std::string get_well_status(
+        const Schedule& sch, const std::string& name, const size_t& timestep)
+    {
+        const Well* well = nullptr;
+        try {
+            well = &(sch.getWell( name, timestep ));
+        } catch( const std::invalid_argument& e ) {
+            throw py::key_error( name );
+        }
+        return Well::Status2String( well->getStatus() );
+    }
+
     system_clock::time_point get_start_time( const Schedule& s ) {
         return datetime(s.posixStartTime());
     }
@@ -92,6 +104,14 @@ namespace {
         return sch[index];
     }
 
+    Well::WellProductionProperties& get_well_production(
+        const Schedule& sch, const std::string& name, const size_t& timestep )
+    {
+        const Well& well = get_well(sch, name, timestep);
+        const Well::WellProductionProperties& prop = well.getProductionProperties();
+        return const_cast<Well::WellProductionProperties&>(prop);
+    }
+
 }
 
 
@@ -107,7 +127,7 @@ void python::common::export_Schedule(py::module& module) {
         .def("group", &get_group, ref_internal);
 
 
-    // Note: In the below class we std::shared_ptr as the holder type, see:
+    // Note: In the below class we use std::shared_ptr as the holder type, see:
     //
     //  https://pybind11.readthedocs.io/en/stable/advanced/smart_ptrs.html
     //
@@ -128,6 +148,8 @@ void python::common::export_Schedule(py::module& module) {
     .def( "get_wells", &Schedule::getWells)
     .def("well_names", py::overload_cast<const std::string&>(&Schedule::wellNames, py::const_))
     .def( "get_well", &get_well)
+    .def( "get_well_status", &get_well_status)
+    .def( "get_well_production", &get_well_production)
     .def( "__contains__", &has_well );
 
 }
