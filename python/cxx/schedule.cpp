@@ -92,11 +92,74 @@ namespace {
         return sch[index];
     }
 
+    double get_well_production_target(
+        const Schedule& sch,
+        const std::string& well_name,
+        std::size_t index,
+        const std::string& variable)
+    {
+        const Well& well = get_well(sch, well_name, index);
+        const Well::WellProductionProperties& prop = well.getProductionProperties();
+        if (variable == "oil") {
+            return prop.OilRate.get<double>();
+        }
+        else if (variable == "gas") {
+            return prop.GasRate.get<double>();
+        }
+        else {
+            throw py::value_error("Unknown variable: " + variable);
+        }
+    }
+
+    void set_well_production_target(
+        Schedule& sch,
+        const std::string& well_name,
+        std::size_t index,
+        const std::string& variable,
+        double value
+    )
+    {
+        // NOTE: We are going to modify the well's production properties, so we
+        //   cannot reuse the shared pointer (since it might be shared with some
+        //   other well's production properties which should not be modified)
+        //  Unfortunately, this also lead to a change in the Opm::Well itself
+        //   since it has the WellProductionProperties as a class variable, and
+        //   is itself a shared pointer that can be reused at different report steps.
+        //  This means that we need to create a new Opm::Well object also.
+        //
+        const Well& old_well = get_well(sch, well_name, index);
+
+        //  Create a copy of the old well structure, the update() method in
+        //  ScheduleState will later create a shared_ptr from it.
+        Well well = old_well;
+        //  Create a new shared pointer by copy constructing the reference
+        //  to the old one
+        std::shared_ptr<Well::WellProductionProperties> prop
+            = std::make_shared<Well::WellProductionProperties>(
+                  well.getProductionProperties());
+        if (variable == "oil") {
+            prop->OilRate.update(value);
+            prop->addProductionControl( Well::ProducerCMode::ORAT );
+        }
+        else if (variable == "gas") {
+            prop->GasRate.update(value);
+            prop->addProductionControl( Well::ProducerCMode::GRAT );
+        }
+        else {
+            throw py::value_error("Unknown variable: " + variable);
+        }
+        UDQActive &udq_active = const_cast<UDQActive&>(sch.getUDQActive(index));
+        if (prop->updateUDQActive(sch.getUDQConfig(index), udq_active)) {
+            sch.updateUDQActive(udq_active, index);
+        }
+        well.updateProduction(prop);
+        //well.setInsertIndex(index);
+        sch.addWell(std::move(well), index);
+        WellGroupEvents &events = sch.getWellGroupEvents(index);
+        events.addEvent( well_name, ScheduleEvents::PRODUCTION_UPDATE);
+        sch.addEvent(ScheduleEvents::PRODUCTION_UPDATE, index);
+    }
 }
-
-
-
-
 
 
 void python::common::export_Schedule(py::module& module) {
@@ -128,6 +191,10 @@ void python::common::export_Schedule(py::module& module) {
     .def( "get_wells", &Schedule::getWells)
     .def("well_names", py::overload_cast<const std::string&>(&Schedule::wellNames, py::const_))
     .def( "get_well", &get_well)
+    .def( "get_well_production_target", &get_well_production_target,
+        py::arg("well_name"), py::arg("step"), py::arg("variable"))
+    .def( "set_well_production_target", &set_well_production_target,
+        py::arg("well_name"), py::arg("step"), py::arg("variable"), py::arg("value"))
     .def( "__contains__", &has_well );
 
 }

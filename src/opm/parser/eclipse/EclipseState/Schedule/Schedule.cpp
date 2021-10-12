@@ -780,6 +780,10 @@ void Schedule::iterateScheduleSection(std::size_t load_start, std::size_t load_e
         sched_state.wells.update( std::move(well) );
     }
 
+    void Schedule::addWell(Well&& well, std::size_t index) {
+        this->snapshots[index].wells.update( std::forward<Well>(well) );
+    }
+
     void Schedule::addWell(const std::string& wellName,
                            const std::string& group,
                            int headI,
@@ -938,6 +942,23 @@ void Schedule::iterateScheduleSection(std::size_t load_start, std::size_t load_e
 
     const Group& Schedule::getGroup(const std::string& groupName, std::size_t timeStep) const {
         return this->snapshots[timeStep].groups.get(groupName);
+    }
+
+    WellGroupEvents& Schedule::getWellGroupEvents(std::size_t timeStep) {
+        return this->snapshots[timeStep].wellgroup_events();
+    }
+
+    void Schedule::addEvent(ScheduleEvents::Events event, std::size_t timeStep) {
+        return this->snapshots[timeStep].events().addEvent(event);
+    }
+
+    const UDQActive& Schedule::getUDQActive(std::size_t timeStep) const {
+        return this->snapshots[timeStep].udq_active.get();
+    }
+
+    void Schedule::updateUDQActive(const UDQActive& udqActive, std::size_t timeStep)
+    {
+        this->snapshots[timeStep].udq_active.update(std::move(udqActive));
     }
 
     void Schedule::updateGuideRateModel(const GuideRateModel& new_model, std::size_t report_step) {
