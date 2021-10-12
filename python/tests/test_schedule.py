@@ -68,6 +68,14 @@ class TestSchedule(unittest.TestCase):
         prod = sch.get_well("PROD", 10)
         self.assertEqual(prod.status(), "SHUT")
 
+    def test_well_production(self):
+        deck  = Parser().parse(test_path('spe3/SPE3CASE1.DATA'))
+        state = EclipseState(deck)
+        sch = Schedule( deck, state )
+        old_target = schedule.get_well_production_target(
+            well_name="PROD", step=2, variable='oil')
+        self.assertEqual(oil_target, 0.0)
+
 
     def test_well_names(self):
         deck  = Parser().parse(test_path('spe3/SPE3CASE1.DATA'))

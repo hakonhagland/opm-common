@@ -25,6 +25,7 @@
 #include <unordered_set>
 
 #include <opm/parser/eclipse/Python/Python.hpp>
+#include <opm/parser/eclipse/EclipseState/Schedule/Events.hpp>
 #include <opm/parser/eclipse/EclipseState/Schedule/GasLiftOpt.hpp>
 #include <opm/parser/eclipse/EclipseState/Schedule/Group/Group.hpp>
 #include <opm/parser/eclipse/EclipseState/Schedule/Group/GTNode.hpp>
@@ -235,6 +236,12 @@ namespace Opm
         void shut_well(const std::string& well_name, std::size_t report_step);
         void stop_well(const std::string& well_name, std::size_t report_step);
         void open_well(const std::string& well_name, std::size_t report_step);
+        const UDQActive& getUDQActive(std::size_t timeStep) const;
+        void updateUDQActive(const UDQActive& udqActive, std::size_t timeStep);
+        WellGroupEvents& getWellGroupEvents(std::size_t timeStep);
+        void addEvent(ScheduleEvents::Events event, std::size_t timeStep);
+        // This is used from Python
+        void addWell(Well&& well, std::size_t index);
 
         std::vector<const Group*> getChildGroups2(const std::string& group_name, std::size_t timeStep) const;
         std::vector<Well> getChildWells2(const std::string& group_name, std::size_t timeStep) const;
