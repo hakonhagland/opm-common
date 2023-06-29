@@ -173,6 +173,7 @@ if(ENABLE_ECL_INPUT)
     src/opm/input/eclipse/Schedule/Group/GuideRateModel.cpp
     src/opm/input/eclipse/Schedule/Group/GConSale.cpp
     src/opm/input/eclipse/Schedule/Group/GConSump.cpp
+    src/opm/input/eclipse/Schedule/Group/GroupEconProductionLimits.cpp
     src/opm/input/eclipse/Schedule/Group/GTNode.cpp
     src/opm/input/eclipse/Schedule/KeywordHandlers.cpp
     src/opm/input/eclipse/Schedule/MessageLimits.cpp
@@ -1261,6 +1262,7 @@ if(ENABLE_ECL_INPUT)
        opm/input/eclipse/Schedule/Group/GuideRate.hpp
        opm/input/eclipse/Schedule/Group/GConSale.hpp
        opm/input/eclipse/Schedule/Group/GConSump.hpp
+       opm/input/eclipse/Schedule/Group/GroupEconProductionLimits.hpp
        opm/input/eclipse/Schedule/Group/GuideRateConfig.hpp
        opm/input/eclipse/Schedule/Group/GuideRateModel.hpp
        opm/input/eclipse/Schedule/MessageLimits.hpp
