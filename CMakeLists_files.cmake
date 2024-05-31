@@ -339,7 +339,8 @@ if(ENABLE_ECL_INPUT)
     opm/material/thermal/EclThermalLawManager.cpp
   )
 
-  list( APPEND PYTHON_CXX_SOURCE_FILES
+  if (OPM_ENABLE_EMBEDDED_PYTHON)
+    list( APPEND PYTHON_EMBEDDED_CXX_SOURCE_FILES
           python/cxx/connection.cpp
           python/cxx/converters.cpp
           python/cxx/deck.cpp
@@ -364,7 +365,6 @@ if(ENABLE_ECL_INPUT)
           python/cxx/well.cpp
           )
 
-  if (OPM_ENABLE_EMBEDDED_PYTHON)
     set_source_files_properties(${PYTHON_CXX_SOURCE_FILES} PROPERTIES COMPILE_FLAGS -Wno-shadow)
     set_source_files_properties(opm/input/eclipse/Python/PythonInterp.cpp PROPERTIES COMPILE_FLAGS -Wno-shadow)
     set_source_files_properties(opm/input/eclipse/Schedule/Action/PyAction.cpp PROPERTIES COMPILE_FLAGS -Wno-shadow)
@@ -373,10 +373,6 @@ if(ENABLE_ECL_INPUT)
       opm/input/eclipse/Python/PyRunModule.cpp
       ${PYTHON_CXX_SOURCE_FILES})
   endif()
-
-  list( APPEND PYTHON_CXX_DEPENDS ${PYTHON_CXX_SOURCE_FILES}
-    python/cxx/converters.hpp
-    python/cxx/export.hpp)
 endif()
 if(ENABLE_ECL_OUTPUT)
   list( APPEND MAIN_SOURCE_FILES

@@ -39,15 +39,13 @@ void python::common::export_all(py::module& module) {
 }
 
 
-PYBIND11_MODULE(opmcommon_python, module) {
+PYBIND11_MODULE(opmembedded_python, module) {
     python::common::export_all(module);
-
-    pybind11::module submodule = module.def_submodule("embedded");
 
     // These attributes are placeholders, they get set to the actual EclipseState, Schedule and SummaryState in PyRunModule.cpp
     // If you change anything here, please recreate and update the python stub file for opm_embedded as described in python/README.md
-    submodule.attr("current_ecl_state") = std::make_shared<EclipseState>();
-    submodule.attr("current_summary_state") = std::make_shared<SummaryState>();
-    submodule.attr("current_schedule") = std::make_shared<Schedule>();
-    submodule.attr("current_report_step") = 0;
+    module.attr("current_ecl_state") = std::make_shared<EclipseState>();
+    module.attr("current_summary_state") = std::make_shared<SummaryState>();
+    module.attr("current_schedule") = std::make_shared<Schedule>();
+    module.attr("current_report_step") = 0;
 }

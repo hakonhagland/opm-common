@@ -8,9 +8,11 @@ set(OPM_MACROS_ROOT ${PROJECT_SOURCE_DIR})
 option(ENABLE_ECL_INPUT "Enable eclipse input support?" ON)
 option(ENABLE_ECL_OUTPUT "Enable eclipse output support?" ON)
 option(ENABLE_MOCKSIM "Build the mock simulator for io testing" ON)
-option(OPM_ENABLE_PYTHON "Enable python bindings?" OFF)
-option(OPM_INSTALL_PYTHON "Install python bindings?" ON)
+option(OPM_INSTALL_EMBEDDED_PYTHON "Install embedded python?" OFF)
 option(OPM_ENABLE_EMBEDDED_PYTHON "Enable embedded python?" OFF)
+if(OPM_INSTALL_EMBEDDED_PYTHON AND NOT OPM_ENABLE_EMBEDDED_PYTHON)
+  message(FATAL_ERROR "OPM_INSTALL_EMBEDDED_PYTHON requires OPM_ENABLE_EMBEDDED_PYTHON")
+endif()
 
 # Output implies input
 if(ENABLE_ECL_OUTPUT)
@@ -75,12 +77,6 @@ else()
   include(DownloadFmt)
 endif()
 
-if(OPM_ENABLE_EMBEDDED_PYTHON AND NOT OPM_ENABLE_PYTHON)
-  # This needs to be here to run before source_hook
-  message(WARNING "Inconsistent settings: OPM_ENABLE_PYTHON=OFF and "
-    "OPM_ENABLE_EMBEDDED_PYTHON=ON. OPM_ENABLE_EMBEDDED_PYTHON=ON now implies OPM_ENABLE_PYTHON=ON.")
-  set(OPM_ENABLE_PYTHON ON CACHE BOOL "Enable python bindings?" FORCE)
-endif()
 # read the list of components from this file (in the project directory);
 # it should set various lists with the names of the files to include
 include (CMakeLists_files.cmake)
@@ -192,16 +188,14 @@ endmacro()
 # manually adding to the opm-common_LIBRARIES variable here, and not in the
 # OpmLibMain function. Here only the library dependency is implemented, the
 # bulk of the python configuration is further down in the file.
-if (OPM_ENABLE_PYTHON)
+if (OPM_ENABLE_EMBEDDED_PYTHON)
   # We need to be compatible with older CMake versions
   # that do not offer FindPython3
   # e.g. Ubuntu LTS 18.04 uses cmake 3.10
   if(${CMAKE_VERSION} VERSION_LESS "3.12.0")
     find_package(PythonInterp REQUIRED)
-    if (OPM_ENABLE_EMBEDDED_PYTHON)
-      find_package(PythonLibs REQUIRED)
-      list(APPEND opm-common_LIBRARIES ${PYTHON_LIBRARIES})
-    endif()
+    find_package(PythonLibs REQUIRED)
+    list(APPEND opm-common_LIBRARIES ${PYTHON_LIBRARIES})
     if(PYTHON_VERSION_MAJOR LESS 3)
       message(SEND_ERROR "OPM requires version 3 of Python but only version ${PYTHON_VERSION_STRING} was found")
     endif()
@@ -216,24 +210,16 @@ if (OPM_ENABLE_PYTHON)
     endif()
     # We always need to search for Development as we use
     # pybind11_add_module even if don't embed Python
-    if (NOT OPM_ENABLE_EMBEDDED_PYTHON)
-      if(${CMAKE_VERSION} VERSION_LESS "3.18.0")
-        find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
-      else()
-        find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module)
-      endif()
+    if(${CMAKE_VERSION} VERSION_LESS "3.18.0")
+      find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
     else()
-      if(${CMAKE_VERSION} VERSION_LESS "3.18.0")
-        find_package(Python3 REQUIRED COMPONENTS Interpreter Development)
-      else()
-        find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Embed Development.Module)
-      endif()
-      get_target_property(_lib_path Python3::Python IMPORTED_LOCATION)
-      set(PYTHON_LIBRARY ${_lib_path})
-      set(PYTHON_LIBRARIES {PYTHON_LIBRARY})
-      list(APPEND opm-common_LIBRARIES ${PYTHON_LIBRARY})
-      set(PYTHON_INCLUDE_DIRS ${Python3_INCLUDE_DIRS})
+      find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Embed Development.Module)
     endif()
+    get_target_property(_lib_path Python3::Python IMPORTED_LOCATION)
+    set(PYTHON_LIBRARY ${_lib_path})
+    set(PYTHON_LIBRARIES {PYTHON_LIBRARY})
+    list(APPEND opm-common_LIBRARIES ${PYTHON_LIBRARY})
+    set(PYTHON_INCLUDE_DIRS ${Python3_INCLUDE_DIRS})
     if(Python3_VERSION_MINOR LESS 3)
       # Python native namespace packages requires python >= 3.3
       message(SEND_ERROR "OPM requires python >= 3.3 but only version ${Python3_VERSION} was found")
@@ -250,6 +236,12 @@ if (OPM_ENABLE_PYTHON)
     set(OPM_PROJECT_EXTRA_CODE_INSTALLED "${OPM_PROJECT_EXTRA_CODE_INSTALLED}
                                          set(opm-common_PYTHON_COMMON_DIR ${CMAKE_INSTALL_PREFIX}/${OPM_PYTHON_COMMON_DIR})")
   endif()
+  message(STATUS "Python3_FOUND: ${Python3_FOUND}")
+  message(STATUS "Python3_EXECUTABLE: ${Python3_EXECUTABLE}")
+  message(STATUS "Python3_LIBRARY: ${Python3_LIBRARY_RELEASE}")
+  message(STATUS "Python3_VERSION: ${Python3_VERSION}")
+  message(STATUS "Python3_INCLUDE_DIRS: ${Python3_INCLUDE_DIRS}")
+
   # We always need the PYTHON_INCLUDE_DIR. Unfortunately
   # When we build pypi packages CMake will fail to determine
   # these via the usual find_package(PythonLibs or
@@ -274,7 +266,6 @@ endif()
 
 # all setup common to the OPM library modules is done here
 include (OpmLibMain)
-
 if (ENABLE_MOCKSIM AND ENABLE_ECL_INPUT)
   add_library(mocksim
               msim/src/msim.cpp)
@@ -394,106 +385,36 @@ install(FILES cmake/OPM-CMake.md
 # Install tab completion skeleton
 install(FILES etc/opm_bash_completion.sh.in DESTINATION share/opm/etc)
 
-if (OPM_ENABLE_PYTHON)
+if (OPM_ENABLE_EMBEDDED_PYTHON)
+  pybind11_add_module(opmembedded_python
+    ${PYTHON_EMBEDDED_CXX_SOURCE_FILES}
+    ${PROJECT_BINARY_DIR}/python/cxx/builtin_pybind11.cpp)
+  set_target_properties(opmembedded_python PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY python/opm_embedded)
+  target_link_libraries(opmembedded_python PRIVATE opmcommon)
+  target_include_directories(opmcommon PRIVATE ${Python3_INCLUDE_DIRS})
+  set_target_properties(opmcommon PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  target_include_directories(opmcommon SYSTEM PRIVATE "${pybind11_INCLUDE_DIRS}")
   make_directory(${PROJECT_BINARY_DIR}/python)
-
-  set(opm-common_PYTHON_PACKAGE_VERSION ${OPM_PYTHON_PACKAGE_VERSION_TAG})
-
+  set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES ${PROJECT_BINARY_DIR}/python)
+  target_link_libraries(opmcommon PUBLIC ${PYTHON_LIBRARY})
+  add_definitions(-DEMBEDDED_PYTHON)
+  # Just make sure to define the copy_python target in this case also such that
+  #  the pybind11_builtin.cpp file is copied to the "python/cxx" directory.
   add_custom_target(copy_python ALL
     COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/python/install.py ${PROJECT_SOURCE_DIR}/python ${PROJECT_BINARY_DIR} 0)
-
-  file(COPY ${PROJECT_SOURCE_DIR}/python/README.md DESTINATION ${PROJECT_BINARY_DIR}/python)
-
-  pybind11_add_module(opmcommon_python
-                      ${PYTHON_CXX_SOURCE_FILES}
-                      ${PROJECT_BINARY_DIR}/python/cxx/builtin_pybind11.cpp)
-
-  target_link_libraries(opmcommon_python PRIVATE
-                        opmcommon)
-  if(TARGET pybind11::pybind11)
-    target_link_libraries(opmcommon_python PRIVATE
-                          pybind11::pybind11)
-  else()
-    target_include_directories(opmcommon_python SYSTEM PRIVATE ${pybind11_INCLUDE_DIRS})
-  endif()
-  set_target_properties(opmcommon_python PROPERTIES
-                        LIBRARY_OUTPUT_DIRECTORY python/opm)
-  add_dependencies(opmcommon_python copy_python)
-
-  # Generate versioned setup.py
-  configure_file(${PROJECT_SOURCE_DIR}/python/setup.py.in
-                 ${PROJECT_BINARY_DIR}/python/setup.py.tmp)
-  file(GENERATE OUTPUT ${PROJECT_BINARY_DIR}/python/setup.py
-                INPUT ${PROJECT_BINARY_DIR}/python/setup.py.tmp)
-
-  # Since the installation of Python code is nonstandard it is protected by an
-  # extra cmake switch, OPM_INSTALL_PYTHON. If you prefer you can still invoke
-  # setup.py install manually - optionally with the generated script
-  # setup-install.sh - and completely bypass cmake in the installation phase.
-  # If OPM_ENABLE_EMBEDDED_PYTHON is enabled, we also install opmcommon_python,
-  # to make it available in a Python console and for e.g. opm-simulators.
-  if (OPM_INSTALL_PYTHON OR OPM_ENABLE_EMBEDDED_PYTHON)
-      include(PyInstallPrefix)
-      install(TARGETS opmcommon_python DESTINATION ${DEST_PREFIX}${CMAKE_INSTALL_PREFIX}/${PYTHON_INSTALL_PREFIX}/opm)
-      if (OPM_INSTALL_PYTHON)
-        install(
-          CODE "execute_process(
-            COMMAND ${PYTHON_EXECUTABLE}
-                    python/install.py
-                    ${PROJECT_BINARY_DIR}/python/opm
-                    ${DEST_PREFIX}${CMAKE_INSTALL_PREFIX}/${PYTHON_INSTALL_PREFIX} 1)")
-      endif()
-      if (OPM_ENABLE_EMBEDDED_PYTHON)
-        install(
-          CODE "execute_process(
-            COMMAND ${PYTHON_EXECUTABLE}
-                    python/install.py
-                    ${PROJECT_BINARY_DIR}/python/opm_embedded
-                    ${DEST_PREFIX}${CMAKE_INSTALL_PREFIX}/${PYTHON_INSTALL_PREFIX} 1)")
-      endif()
-      ## Need to install this Python script such that it can be used by opm-simulators when building against an installed
-      ##  opm-common
-      install( PROGRAMS "python/install.py" DESTINATION "${OPM_PYTHON_COMMON_DIR}" )
-  endif()
-
-  # Observe that if the opmcommon library has been built as a shared library the
-  # python library opmcommon_python will in general not find it runtime while
-  # testing.
-  add_test(NAME python_tests
-           WORKING_DIRECTORY ${PROJECT_BINARY_DIR}/python
-           COMMAND ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=${PROJECT_BINARY_DIR}/lib ${Python3_EXECUTABLE} -m unittest discover
-           )
-
-  set_target_properties(opmcommon PROPERTIES POSITION_INDEPENDENT_CODE ON)
-  set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES ${PROJECT_BINARY_DIR}/python)
-
-  # -------------------------------------------------------------------------
-  # Let cmake configure some small shell scripts which can be used to simplify
-  # building, testing and installation of the Python extensions.
-  configure_file(python/setup-build.sh.in tmp/setup-build.sh)
-  file( COPY ${PROJECT_BINARY_DIR}/tmp/setup-build.sh
-        DESTINATION ${PROJECT_BINARY_DIR}
-        FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE )
-
-  configure_file(python/setup-test.sh.in tmp/setup-test.sh)
-  file( COPY ${PROJECT_BINARY_DIR}/tmp/setup-test.sh
-        DESTINATION ${PROJECT_BINARY_DIR}
-        FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE )
-
-  configure_file(python/setup-install.sh.in tmp/setup-install.sh)
-  file( COPY ${PROJECT_BINARY_DIR}/tmp/setup-install.sh
-        DESTINATION ${PROJECT_BINARY_DIR}
-        FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE )
-
-  configure_file(python/enable-python.sh.in enable-python.sh)
-
-  # -------------------------------------------------------------------------
-  # 2: Embed the Python interpreter for keywords like PYACTION and PYINPUT
-  target_include_directories(opmcommon SYSTEM PRIVATE "${pybind11_INCLUDE_DIRS}")
-  if (OPM_ENABLE_EMBEDDED_PYTHON)
-    target_link_libraries(opmcommon PUBLIC ${PYTHON_LIBRARY})
-    add_definitions(-DEMBEDDED_PYTHON)
-  endif()
+endif()
+if (OPM_INSTALL_EMBEDDED_PYTHON)
+  include(PyInstallPrefix)
+  install(
+    CODE "execute_process(
+        COMMAND ${PYTHON_EXECUTABLE}
+                python/install.py
+                ${PROJECT_BINARY_DIR}/python/opm_embedded
+                ${DEST_PREFIX}${CMAKE_INSTALL_PREFIX}/${PYTHON_INSTALL_PREFIX} 1)")
+  ## Need to install this Python script such that it can be used by opm-simulators when building against an installed
+  ##  opm-common
+  install( PROGRAMS "python/install.py" DESTINATION "${OPM_PYTHON_COMMON_DIR}" )
 endif()
 
 install(DIRECTORY docs/man1 DESTINATION ${CMAKE_INSTALL_MANDIR}

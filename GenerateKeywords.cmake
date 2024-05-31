@@ -75,7 +75,7 @@ list(APPEND _target_output ${PROJECT_BINARY_DIR}/include/opm/input/eclipse/Parse
 list(APPEND _tmp_output ${PROJECT_BINARY_DIR}/tmp_gen/include/opm/input/eclipse/Parser/ParserKeywords/Builtin.hpp)
 
 set(GEN_DEPS ${_tmp_output})
-if (OPM_ENABLE_PYTHON)
+if (OPM_ENABLE_EMBEDDED_PYTHON)
   list(APPEND genkw_argv ${PROJECT_BINARY_DIR}/tmp_gen/builtin_pybind11.cpp)
   list(APPEND _tmp_output ${PROJECT_BINARY_DIR}/tmp_gen/builtin_pybind11.cpp)
   list(APPEND _target_output ${PROJECT_BINARY_DIR}/python/cxx/builtin_pybind11.cpp)
