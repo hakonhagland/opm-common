@@ -26,6 +26,7 @@
 #include <cstddef>
 #include <ctime>
 #include <iosfwd>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -35,6 +36,7 @@
 namespace Opm {
 
 class UDQSet;
+class ReservoirCouplingSummaryState;
 
 } // namespace Opm
 
@@ -107,6 +109,10 @@ public:
     void update_well_var(const std::string& well, const std::string& var, double value);
     void update_group_var(const std::string& group, const std::string& var, double value);
     void update_group_var(const std::string& group, const std::string& var, EclIO::SummaryNode::Type type, double value);
+    void setReservoirCouplingSummaryState(const ReservoirCouplingSummaryState* state);
+    const ReservoirCouplingSummaryState* reservoirCouplingSummaryState() const;
+    ReservoirCouplingSummaryState exportReservoirCouplingSummaryState(
+        const std::map<std::string, std::string>& group_names) const;
     void update_elapsed(double delta);
     void update_udq(const UDQSet& udq_set);
     void update_conn_var(const std::string& well, const std::string& var, std::size_t global_index, double value);
@@ -193,6 +199,7 @@ private:
 
     // Reusable buffer for formatting connection keys in update_conn_var to avoid allocation.
     mutable std::string conn_key_buffer_;
+    const ReservoirCouplingSummaryState* reservoir_coupling_summary_state_{nullptr};
 };
 
 std::ostream& operator<<(std::ostream& stream, const SummaryState& st);

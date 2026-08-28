@@ -365,6 +365,8 @@ namespace Opm { namespace data {
         std::map<std::string, ProductionRates> production;
         /// Per master-group, per-phase injection rates (SI units).
         std::map<std::string, std::map<Opm::Phase, InjectionRates>> injection;
+        /// Per master-group gas-lift ALQ rates (SI units).
+        std::map<std::string, double> gas_lift;
     };
 
 }} // Opm::data

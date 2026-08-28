@@ -284,6 +284,13 @@ public:
     ///   ignored.
     void recordNewDynamicWellConns(const DynamicConns& newConns);
 
+    void registerRequisiteSummaryKeys(SummaryConfig&                sumcfg,
+                                      const std::vector<std::string>& keys);
+
+    void evalRequisites(const int                    report_step,
+                        const DynamicSimulatorState& values,
+                        SummaryState&                summary_state) const;
+
     /// Calculate summary vector values.
     ///
     /// \param[in] report_step One-based report step index for which to

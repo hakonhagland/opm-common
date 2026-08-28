@@ -47,6 +47,7 @@
 #include <opm/input/eclipse/Schedule/Schedule.hpp>
 #include <opm/input/eclipse/Schedule/ScheduleState.hpp>
 #include <opm/input/eclipse/Schedule/SummaryState.hpp>
+#include <opm/input/eclipse/Schedule/ReservoirCouplingSummaryState.hpp>
 #include <opm/input/eclipse/Schedule/UDQ/UDQConfig.hpp>
 #include <opm/input/eclipse/Schedule/UDQ/UDQContext.hpp>
 #include <opm/input/eclipse/Schedule/UDQ/UDQParams.hpp>
@@ -1105,6 +1106,24 @@ inline quantity glir( const fn_args& args ) {
     const auto& sched_state = args.schedule[args.sim_step];
 
     double alq_rate = 0.0;
+    if (args.rc_rates != nullptr) {
+        std::function<double(const std::string&)> coupled_alq = [&args, &coupled_alq](const std::string& group)
+        {
+            double rate = 0.0;
+            const auto group_pos = args.rc_rates->gas_lift.find(group);
+            if (group_pos != args.rc_rates->gas_lift.end()) {
+                rate += group_pos->second;
+            }
+            if (args.schedule[args.sim_step].groups.has(group)) {
+                for (const auto& child : args.schedule[args.sim_step].groups(group).groups()) {
+                    rate += coupled_alq(child);
+                }
+            }
+            return rate;
+        };
+        alq_rate += coupled_alq(args.group_name);
+    }
+
     for (const auto* well : args.schedule_wells) {
         if (well->isInjector()) {
             continue;
@@ -2278,6 +2297,21 @@ inline quantity group_liquid_production_target( const fn_args& args )
 
 inline quantity group_gas_injection_target( const fn_args& args )
 {
+    if (args.st.reservoirCouplingSummaryState() != nullptr
+        && args.st.reservoirCouplingSummaryState()->hasGroupValue(args.group_name, "GGIRT")) {
+        return { args.unit_system.to_si(
+                     measure::gas_surface_rate,
+                     args.st.reservoirCouplingSummaryState()->getGroupValue(args.group_name, "GGIRT")),
+                 measure::rate };
+    }
+
+    if (args.st.has_group_var(args.group_name, "GGIRT")) {
+        return { args.unit_system.to_si(
+                     measure::gas_surface_rate,
+                     args.st.get_group_var(args.group_name, "GGIRT")),
+                 measure::rate };
+    }
+
     double value = 0.0;
     const auto& groups = args.schedule[args.sim_step].groups;
     if (groups.has(args.group_name)) {
@@ -2761,12 +2795,10 @@ quantity well_efficiency_factor_grouptree(const fn_args& args)
 
 quantity group_efficiency_factor(const fn_args& args)
 {
-    const auto zero = quantity { 0.0, measure::identity };
-
-    if (args.schedule_wells.empty()) {
-        return zero;
-    }
     const auto& sched = args.schedule[args.sim_step];
+    if (!sched.groups.has(args.group_name)) {
+        return { 0.0, measure::identity };
+    }
     const auto gefac = sched.groups(args.group_name).getGroupEfficiencyFactor();
 
     return { gefac, measure::identity };
@@ -6120,6 +6152,13 @@ public:
     ///   ignored.
     void recordNewDynamicWellConns(const DynamicConns& newConns);
 
+    void registerRequisiteSummaryKeys(SummaryConfig&                sumcfg,
+                                      const std::vector<std::string>& keys);
+
+    void evalRequisites(const int                    sim_step,
+                        const DynamicSimulatorState& values,
+                        SummaryState&                st) const;
+
     void eval(const int                    sim_step,
               const double                 secs_elapsed,
               const DynamicSimulatorState& values,
@@ -6160,6 +6199,7 @@ private:
 
     SummaryOutputParameters                  outputParameters_{};
     std::unordered_map<std::string, EvalPtr> extra_parameters{};
+    std::unordered_map<std::string, EvalPtr> coupling_parameters{};
     std::vector<std::string> valueKeys_{};
     std::vector<std::string> valueUnits_{};
     std::vector<MiniStep>    unwritten_{};
@@ -6342,6 +6382,60 @@ recordNewDynamicWellConns(const DynamicConns& newConns)
 
 void
 Opm::out::Summary::SummaryImplementation::
+registerRequisiteSummaryKeys(SummaryConfig&                sumcfg,
+                             const std::vector<std::string>& keys)
+{
+    if (this->smspec_ != nullptr || this->stream_ != nullptr || this->numUnwritten_ != 0) {
+        throw std::logic_error {
+            "Cannot register requisite summary vectors after summary output initialization"
+        };
+    }
+
+    const auto new_nodes = sumcfg.registerRequisiteUDQorActionSummaryKeys(
+        keys, this->es_.get(), this->sched_.get());
+
+    auto nodes = new_nodes;
+    for (const auto& node : sumcfg) {
+        if (std::ranges::find(keys, node.keyword()) != keys.end()) {
+            nodes.push_back(node);
+        }
+    }
+    if (nodes.empty()) {
+        return;
+    }
+
+    const auto initial_state = SummaryState {
+        TimeService::from_time_t(this->sched_.get().getStartTime()),
+        this->es_.get().runspec().udqParams().undefinedValue()
+    };
+    Evaluator::Factory evaluator_factory {
+        this->es_.get(), this->grid_.get(), this->sched_.get(), initial_state,
+        this->sched_.get().getUDQConfig(this->sched_.get().size() - 1)
+    };
+
+    for (const auto& node : nodes) {
+        auto descriptor = evaluator_factory.create(node);
+        if (descriptor.evaluator == nullptr) {
+            throw std::logic_error {
+                fmt::format("Evaluation function for summary vector '{}' ({}/{}) not found",
+                            node.keyword(), node.category(), node.type())
+            };
+        }
+
+        if (this->coupling_parameters.contains(descriptor.uniquekey)) {
+            continue;
+        }
+
+        this->coupling_parameters.emplace(descriptor.uniquekey, std::move(descriptor.evaluator));
+    }
+
+    this->regCache_.buildCache(sumcfg.fip_regions(), this->es_.get().globalFieldProps(),
+                               this->grid_.get(), this->sched_.get());
+
+}
+
+void
+Opm::out::Summary::SummaryImplementation::
 eval(const int                    sim_step,
      const double                 secs_elapsed,
      const DynamicSimulatorState& values,
@@ -6417,6 +6511,55 @@ eval(const int                    sim_step,
     }
 
     st.update_elapsed(duration);
+}
+
+void
+Opm::out::Summary::SummaryImplementation::
+evalRequisites(const int                    sim_step,
+               const DynamicSimulatorState& values,
+               Opm::SummaryState&           st) const
+{
+    const Evaluator::InputData input {
+        this->es_, this->sched_, this->grid_, this->regCache_, values.inplace.initial
+    };
+    const auto& well_solution = values.well_solution != nullptr
+        ? *values.well_solution : data::Wells{};
+    const auto& wbp = values.wbp != nullptr
+        ? *values.wbp : data::WellBlockAveragePressures{};
+    const auto& group_and_nwrk_solution = values.group_and_nwrk_solution != nullptr
+        ? *values.group_and_nwrk_solution : data::GroupAndNetworkValues{};
+    const auto& single_values = values.single_values != nullptr
+        ? *values.single_values : DynamicSimulatorState::GlobalProcessParameters{};
+    const auto& inplace = values.inplace.current != nullptr
+        ? *values.inplace.current : Inplace{};
+    const auto& region_values = values.region_values != nullptr
+        ? *values.region_values : DynamicSimulatorState::RegionParameters{};
+    const auto& block_values = values.block_values != nullptr
+        ? *values.block_values : DynamicSimulatorState::BlockValues{};
+    const auto& lgr_block_values = values.lgr_block_values != nullptr
+        ? *values.lgr_block_values : DynamicSimulatorState::LgrBlockValues{};
+    const auto& aquifer_values = values.aquifer_values != nullptr
+        ? *values.aquifer_values : data::Aquifers{};
+    const auto& interreg_flows = values.interreg_flows != nullptr
+        ? *values.interreg_flows : DynamicSimulatorState::InterRegFlowValues{};
+
+    const Evaluator::SimulatorResults simRes {
+        well_solution, wbp, group_and_nwrk_solution, single_values, inplace,
+        region_values, block_values, lgr_block_values, aquifer_values,
+        interreg_flows, values.rc_group_rates
+    };
+    // Base output vectors (e.g. a plain FGPR requested in SUMMARY) may
+    // themselves be UDQ dependencies; duration=0 keeps Total-type vectors
+    // from double-counting since the real eval() still runs later.
+    for (auto& evaluator : this->outputParameters_.getEvaluators()) {
+        evaluator->update(sim_step, 0.0, input, simRes, st);
+    }
+    for (const auto& [key, evaluator] : this->extra_parameters) {
+        evaluator->update(sim_step, 0.0, input, simRes, st);
+    }
+    for (const auto& [key, evaluator] : this->coupling_parameters) {
+        evaluator->update(sim_step, 0.0, input, simRes, st);
+    }
 }
 
 void Opm::out::Summary::SummaryImplementation::write(const bool is_final_summary)
@@ -6893,6 +7036,19 @@ Summary::Summary(SummaryConfig&       sumcfg,
 void Summary::recordNewDynamicWellConns(const DynamicConns& newConns)
 {
     this->pImpl_->recordNewDynamicWellConns(newConns);
+}
+
+void Summary::registerRequisiteSummaryKeys(SummaryConfig&                sumcfg,
+                                           const std::vector<std::string>& keys)
+{
+    this->pImpl_->registerRequisiteSummaryKeys(sumcfg, keys);
+}
+
+void Summary::evalRequisites(const int                    report_step,
+                             const DynamicSimulatorState& values,
+                             SummaryState&                summary_state) const
+{
+    this->pImpl_->evalRequisites(std::max(0, report_step - 1), values, summary_state);
 }
 
 void Summary::eval(const int                    report_step,

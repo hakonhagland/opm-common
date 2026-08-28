@@ -357,6 +357,12 @@ public:
     ///   ignored.
     void recordNewDynamicWellConns(const out::Summary::DynamicConns& newConns);
 
+    void registerRequisiteSummaryKeys(const std::vector<std::string>& keys);
+
+    void evalRequisiteSummary(const int                            report_step,
+                              const out::Summary::DynamicSimulatorState& values,
+                              SummaryState&                        summary_state) const;
+
     /// Load per-cell solution data and wellstate from restart file.
     ///
     /// Name of restart file and report step from which to restart inferred

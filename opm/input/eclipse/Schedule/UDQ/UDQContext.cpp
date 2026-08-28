@@ -22,6 +22,7 @@
 #include <opm/input/eclipse/EclipseState/Grid/RegionSetMatcher.hpp>
 
 #include <opm/input/eclipse/Schedule/MSW/SegmentMatcher.hpp>
+#include <opm/input/eclipse/Schedule/ReservoirCouplingSummaryState.hpp>
 #include <opm/input/eclipse/Schedule/SummaryState.hpp>
 #include <opm/input/eclipse/Schedule/UDQ/UDQState.hpp>
 #include <opm/input/eclipse/Schedule/UDQ/UDT.hpp>
@@ -104,6 +105,11 @@ namespace Opm {
             return pair_ptr->second;
         }
 
+        const auto* rc_state = this->summary_state.reservoirCouplingSummaryState();
+        if (rc_state != nullptr && rc_state->has(key)) {
+            return rc_state->get(key);
+        }
+
         return this->summary_state.get(key);
     }
 
@@ -142,6 +148,11 @@ namespace Opm {
             }
 
             return std::nullopt;
+        }
+
+        const auto* rc_state = this->summary_state.reservoirCouplingSummaryState();
+        if (rc_state != nullptr && rc_state->hasGroupValue(group, var)) {
+            return rc_state->getGroupValue(group, var);
         }
 
         if (this->summary_state.has_group_var(var)) {

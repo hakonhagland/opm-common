@@ -353,7 +353,8 @@ UDQSet UDQDefine::eval(const UDQContext& context) const
                                      this->m_location.lineno,
                                      exc.what());
         OpmLog::error(msg);
-        std::throw_with_nested(exc);
+        // Preserve the diagnostic instead of slicing the exception.
+        std::throw_with_nested(std::runtime_error(msg));
     }
 
     if (! res.has_value()) {

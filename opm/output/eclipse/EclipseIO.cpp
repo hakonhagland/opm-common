@@ -369,6 +369,12 @@ public:
     ///   ignored.
     void recordNewDynamicWellConns(const out::Summary::DynamicConns& newConns);
 
+    void registerRequisiteSummaryKeys(const std::vector<std::string>& keys);
+
+    void evalRequisiteSummary(const int                            report_step,
+                              const out::Summary::DynamicSimulatorState& values,
+                              SummaryState&                        summary_state) const;
+
     /// Create summary file output.
     ///
     /// Calls Summary::add_timestep() and Summary::write().
@@ -867,6 +873,20 @@ recordNewDynamicWellConns(const out::Summary::DynamicConns& newConns)
     this->summary_.recordNewDynamicWellConns(newConns);
 }
 
+void Opm::EclipseIO::Impl::
+registerRequisiteSummaryKeys(const std::vector<std::string>& keys)
+{
+    this->summary_.registerRequisiteSummaryKeys(this->summaryConfig_, keys);
+}
+
+void Opm::EclipseIO::Impl::
+evalRequisiteSummary(const int                            report_step,
+                     const out::Summary::DynamicSimulatorState& values,
+                     SummaryState&                        summary_state) const
+{
+    this->summary_.evalRequisites(report_step, values, summary_state);
+}
+
 void Opm::EclipseIO::Impl::writeSummaryFile(const SummaryState&      st,
                                             const int                report_step,
                                             const std::optional<int> time_step,
@@ -1277,6 +1297,20 @@ void Opm::EclipseIO::
 recordNewDynamicWellConns(const out::Summary::DynamicConns& newConns)
 {
     this->impl->recordNewDynamicWellConns(newConns);
+}
+
+void Opm::EclipseIO::
+registerRequisiteSummaryKeys(const std::vector<std::string>& keys)
+{
+    this->impl->registerRequisiteSummaryKeys(keys);
+}
+
+void Opm::EclipseIO::
+evalRequisiteSummary(const int                            report_step,
+                     const out::Summary::DynamicSimulatorState& values,
+                     SummaryState&                        summary_state) const
+{
+    this->impl->evalRequisiteSummary(report_step, values, summary_state);
 }
 
 Opm::RestartValue

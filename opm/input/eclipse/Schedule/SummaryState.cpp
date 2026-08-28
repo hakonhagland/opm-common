@@ -18,6 +18,7 @@
 */
 
 #include <opm/input/eclipse/Schedule/SummaryState.hpp>
+#include <opm/input/eclipse/Schedule/ReservoirCouplingSummaryState.hpp>
 
 
 #include <opm/common/utility/TimeService.hpp>
@@ -446,6 +447,40 @@ namespace Opm
         }
     }
 
+    void SummaryState::setReservoirCouplingSummaryState(
+        const ReservoirCouplingSummaryState* state)
+    {
+        this->reservoir_coupling_summary_state_ = state;
+    }
+
+    const ReservoirCouplingSummaryState*
+    SummaryState::reservoirCouplingSummaryState() const
+    {
+        return this->reservoir_coupling_summary_state_;
+    }
+
+    ReservoirCouplingSummaryState
+    SummaryState::exportReservoirCouplingSummaryState(
+        const std::map<std::string, std::string>& group_names) const
+    {
+        ReservoirCouplingSummaryState result;
+        for (const auto& [keyword, value] : this->values) {
+            result.set(keyword, value);
+        }
+
+        for (const auto& [keyword, groups] : this->group_values) {
+            for (const auto& [master_group, value] : groups) {
+                result.setGroupValue(master_group, keyword, value);
+                const auto group_pos = group_names.find(master_group);
+                if (group_pos != group_names.end()) {
+                    result.setGroupValue(group_pos->second, keyword, value);
+                }
+            }
+        }
+
+        return result;
+    }
+
     void SummaryState::update_elapsed(double delta)
     {
         this->elapsed += delta;
@@ -625,6 +660,11 @@ namespace Opm
     double SummaryState::get_group_var(const std::string& group,
                                        const std::string& var) const
     {
+        if (this->reservoir_coupling_summary_state_ != nullptr
+            && this->reservoir_coupling_summary_state_->hasGroupValue(group, var)) {
+            return this->reservoir_coupling_summary_state_->getGroupValue(group, var);
+        }
+
         const auto use_udq_fallback = is_group_udq(var);
 
         auto varPos = this->group_values.find(var);
@@ -797,6 +837,11 @@ namespace Opm
                                        const std::string& var,
                                        const double       default_value) const
     {
+        if (this->reservoir_coupling_summary_state_ != nullptr
+            && this->reservoir_coupling_summary_state_->hasGroupValue(group, var)) {
+            return this->reservoir_coupling_summary_state_->getGroupValue(group, var);
+        }
+
         const auto fallback = is_group_udq(var)
             ? this->udq_undefined
             : default_value;

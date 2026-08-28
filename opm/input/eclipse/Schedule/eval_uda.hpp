@@ -28,6 +28,7 @@ enum class InjectorType;
 class UDAValue;
 enum class Phase;
 class SummaryState;
+class ReservoirCouplingSummaryState;
 class UnitSystem;
 
 namespace UDA {
@@ -35,7 +36,9 @@ namespace UDA {
     double eval_well_uda(const UDAValue& value,
                          const std::string& name,
                          const SummaryState& st,
-                         double udq_undefined);
+                         double udq_undefined,
+                         const ReservoirCouplingSummaryState* rc_state = nullptr);
+
     /// Evaluate a well level UDA holding a pressure.
     ///
     /// Unlike eval_well_uda(), a result which is zero or negative is passed
@@ -47,23 +50,27 @@ namespace UDA {
                                   const SummaryState& st,
                                   double udq_undefined);
 
+
     double eval_well_uda_rate(const UDAValue& value,
                               const std::string& name,
                               const SummaryState& st,
                               double udq_undefined,
                               InjectorType wellType,
-                              const UnitSystem& unitSystem);
+                              const UnitSystem& unitSystem,
+                              const ReservoirCouplingSummaryState* rc_state = nullptr);
 
     double eval_group_uda(const UDAValue& value,
                           const std::string& name,
                           const SummaryState& st,
-                          double udq_undefined);
+                          double udq_undefined,
+                          const ReservoirCouplingSummaryState* rc_state = nullptr);
     double eval_group_uda_rate(const UDAValue& value,
                                const std::string& name,
                                const SummaryState& st,
                                double udq_undefined,
                                Phase phase,
-                               const UnitSystem& unitSystem);
+                               const UnitSystem& unitSystem,
+                               const ReservoirCouplingSummaryState* rc_state = nullptr);
 }
 
 }

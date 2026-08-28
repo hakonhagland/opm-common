@@ -198,6 +198,16 @@ public:
         m_ptrmap.clear();
     }
 
+    const std::vector<char>& buffer() const
+    {
+        return this->m_buffer;
+    }
+
+    void setBuffer(std::vector<char> buffer)
+    {
+        this->m_buffer = std::move(buffer);
+    }
+
     //! \brief Returns current position in buffer.
     std::size_t position() const
     {

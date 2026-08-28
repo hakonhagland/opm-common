@@ -22,13 +22,15 @@
 #include <opm/input/eclipse/Units/UnitSystem.hpp>
 #include <opm/input/eclipse/Deck/UDAValue.hpp>
 #include <opm/input/eclipse/Schedule/SummaryState.hpp>
+#include <opm/input/eclipse/Schedule/ReservoirCouplingSummaryState.hpp>
 
 #include "Well/injection.hpp"
 
 namespace Opm {
 namespace UDA {
 
-  double eval_well_uda(const UDAValue& value, const std::string& well, const SummaryState& st, double udq_default) {
+    double eval_well_uda(const UDAValue& value, const std::string& well, const SummaryState& st, double udq_default,
+                                             const ReservoirCouplingSummaryState* rc_state) {
     if (value.is<double>())
         return value.getSI();
 
@@ -36,6 +38,8 @@ namespace UDA {
         return udq_default;
 
     const std::string& string_var = value.get<std::string>();
+    if (rc_state != nullptr && rc_state->hasGroupValue(well, string_var))
+        return rc_state->getGroupValue(well, string_var);
     double output_value = udq_default;
 
     if (st.has_well_var(well, value.get<std::string>()))
@@ -76,13 +80,15 @@ double eval_well_uda_pressure(const UDAValue& value, const std::string& well, co
 }
 
 
-double eval_well_uda_rate(const UDAValue& value, const std::string& well, const SummaryState& st, double udq_default, InjectorType wellType, const UnitSystem& unitSystem) {
-    const auto raw_rate = value.is<double>() ? value.get<double>() : eval_well_uda(value, well, st, udq_default);
+ double eval_well_uda_rate(const UDAValue& value, const std::string& well, const SummaryState& st, double udq_default, InjectorType wellType, const UnitSystem& unitSystem,
+                           const ReservoirCouplingSummaryState* rc_state) {
+    const auto raw_rate = value.is<double>() ? value.get<double>() : eval_well_uda(value, well, st, udq_default, rc_state);
     return injection::rateToSI(raw_rate, wellType, unitSystem);
 }
 
 
-double eval_group_uda(const UDAValue& value, const std::string& group, const SummaryState& st, double udq_undefined) {
+double eval_group_uda(const UDAValue& value, const std::string& group, const SummaryState& st, double udq_undefined,
+                      const ReservoirCouplingSummaryState* rc_state) {
     if (value.is<double>())
         return value.getSI();
 
@@ -90,6 +96,13 @@ double eval_group_uda(const UDAValue& value, const std::string& group, const Sum
         return udq_undefined;
 
     const std::string& string_var = value.get<std::string>();
+    if (rc_state != nullptr && rc_state->hasGroupValue(group, string_var))
+        return rc_state->getGroupValue(group, string_var);
+    if (st.reservoirCouplingSummaryState() != nullptr
+        && st.reservoirCouplingSummaryState()->hasGroupValue(group, string_var)) {
+        return st.reservoirCouplingSummaryState()->getGroupValue(group, string_var);
+    }
+
     double output_value = udq_undefined;
 
     if (st.has_group_var(group, value.get<std::string>()))
@@ -105,8 +118,18 @@ double eval_group_uda(const UDAValue& value, const std::string& group, const Sum
 }
 
 
-double eval_group_uda_rate(const UDAValue& value, const std::string& name, const SummaryState& st, double udq_undefined, Phase phase, const UnitSystem& unitSystem) {
-    const auto raw_rate = value.is<double>() ? value.get<double>() : eval_group_uda(value, name, st, udq_undefined);
+double eval_group_uda_rate(const UDAValue& value, const std::string& name, const SummaryState& st, double udq_undefined, Phase phase, const UnitSystem& unitSystem,
+                           const ReservoirCouplingSummaryState* rc_state) {
+    if (value.is<std::string>()) {
+        const auto& keyword = value.get<std::string>();
+        const auto* context = rc_state != nullptr
+            ? rc_state : st.reservoirCouplingSummaryState();
+        if (context != nullptr && context->hasGroupValue(name, keyword)) {
+            return context->getGroupValue(name, keyword);
+        }
+    }
+
+    const auto raw_rate = value.is<double>() ? value.get<double>() : eval_group_uda(value, name, st, udq_undefined, rc_state);
     return injection::rateToSI(raw_rate, phase, unitSystem);
 }
 

@@ -18,6 +18,7 @@
 */
 
 #include <opm/input/eclipse/Schedule/UDQ/UDQState.hpp>
+#include <opm/input/eclipse/Schedule/ReservoirCouplingSummaryState.hpp>
 
 #include <opm/input/eclipse/Schedule/UDQ/UDQEnums.hpp>
 
@@ -27,6 +28,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -247,7 +249,33 @@ UDQState::UDQState(double undefined)
 
 bool UDQState::has(const std::string& key) const
 {
-    return this->scalar_values.count(key);
+    return (this->reservoir_coupling_summary_state_ != nullptr
+            && this->reservoir_coupling_summary_state_->has(key))
+        || this->scalar_values.count(key);
+}
+
+void UDQState::setReservoirCouplingSummaryState(
+    const ReservoirCouplingSummaryState* state)
+{
+    this->reservoir_coupling_summary_state_ = state;
+}
+
+void UDQState::exportReservoirCouplingSummaryState(
+    ReservoirCouplingSummaryState& result,
+    const std::map<std::string, std::string>& group_names) const
+{
+    for (const auto& [keyword, value] : this->scalar_values) {
+        result.set(keyword, value);
+    }
+
+    for (const auto& [keyword, groups] : this->group_values) {
+        for (const auto& [master_group, value] : groups) {
+            const auto group_pos = group_names.find(master_group);
+            if (group_pos != group_names.end()) {
+                result.setGroupValue(group_pos->second, keyword, value);
+            }
+        }
+    }
 }
 
 bool UDQState::has_well_var(const std::string& well, const std::string& key) const
@@ -257,7 +285,9 @@ bool UDQState::has_well_var(const std::string& well, const std::string& key) con
 
 bool UDQState::has_group_var(const std::string& group, const std::string& key) const
 {
-    return has_var(this->group_values, group, key);
+    return (this->reservoir_coupling_summary_state_ != nullptr
+            && this->reservoir_coupling_summary_state_->hasGroupValue(group, key))
+        || has_var(this->group_values, group, key);
 }
 
 bool UDQState::has_segment_var(const std::string& well,
@@ -327,6 +357,11 @@ double UDQState::get(const std::string& key) const
         throw std::logic_error("Key is not a UDQ variable:" + key);
     }
 
+    if (this->reservoir_coupling_summary_state_ != nullptr
+        && this->reservoir_coupling_summary_state_->has(key)) {
+        return this->reservoir_coupling_summary_state_->get(key);
+    }
+
     auto iter = this->scalar_values.find(key);
     if (iter == this->scalar_values.end())
         throw std::out_of_range("Invalid key: " + key);
@@ -336,6 +371,11 @@ double UDQState::get(const std::string& key) const
 
 double UDQState::get_group_var(const std::string& group, const std::string& key) const
 {
+    if (this->reservoir_coupling_summary_state_ != nullptr
+        && this->reservoir_coupling_summary_state_->hasGroupValue(group, key)) {
+        return this->reservoir_coupling_summary_state_->getGroupValue(group, key);
+    }
+
     return get_wg(this->group_values, group, key, this->undef_value);
 }
 

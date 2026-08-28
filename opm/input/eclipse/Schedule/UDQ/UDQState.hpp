@@ -25,6 +25,7 @@
 #include <opm/output/eclipse/WindowedArray.hpp>
 
 #include <cstddef>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -36,6 +37,8 @@ namespace Opm::RestartIO {
 
 namespace Opm {
 
+class ReservoirCouplingSummaryState;
+
 class UDQState
 {
 public:
@@ -45,6 +48,10 @@ public:
     explicit UDQState(double undefined);
 
     bool has(const std::string& key) const;
+    void setReservoirCouplingSummaryState(const ReservoirCouplingSummaryState* state);
+    void exportReservoirCouplingSummaryState(
+        ReservoirCouplingSummaryState& result,
+        const std::map<std::string, std::string>& group_names) const;
     void load_rst(const RestartIO::RstState& rst_state);
 
     bool has_well_var(const std::string& well, const std::string& key) const;
@@ -94,6 +101,7 @@ private:
     std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<std::size_t, double>>> segment_values{};
 
     std::unordered_map<std::string, std::size_t> defines{};
+    const ReservoirCouplingSummaryState* reservoir_coupling_summary_state_{nullptr};
 
     void add(const std::string& udq_key, const UDQSet& result);
     double get_wg_var(const std::string& well, const std::string& key, UDQVarType var_type) const;
