@@ -80,6 +80,13 @@ enum class UDQVarType
     NumTypes,
 };
 
+/// Single-bit mask identifying \p var_type.  Combine with bitwise OR to
+/// build a var-type selection mask for UDQConfig::eval()/eval_define().
+constexpr std::size_t UDQVarTypeBit(const UDQVarType var_type)
+{
+    return std::size_t{1} << static_cast<std::size_t>(var_type);
+}
+
 enum class UDQTokenType
 {
     error = 0,

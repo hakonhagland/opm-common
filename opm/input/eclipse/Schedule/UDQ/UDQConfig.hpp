@@ -416,13 +416,26 @@ namespace Opm {
         ///
         /// \param[in,out] udq_state Dynamic values for all known UDQs.
         /// Values pertaining to UDQs being assigned here will be updated.
+        ///
+        /// \param[in] var_type_mask Bitmask, built from UDQVarTypeBit(),
+        /// restricting which UDQ categories get their DEFINE expressions
+        /// evaluated in this call.  Defaults to all evaluable categories
+        /// (WELL_VAR, GROUP_VAR, FIELD_VAR, SEGMENT_VAR).  Callers that only
+        /// need a subset -- e.g., a reservoir-coupling exchange refreshing
+        /// group/field level targets before well/segment level dynamic data
+        /// (WBP, ALQ, ...) is available for the current timestep -- should
+        /// restrict the mask accordingly.  Evaluating a well/segment level
+        /// "UPDATE ... NEXT" UDQ prematurely permanently freezes it at
+        /// whatever value that early call produced, since NEXT is a
+        /// one-shot update that is cleared right after being applied.
         void eval(std::size_t             report_step,
                   const WellMatcher&      wm,
                   const GroupOrder&       go,
                   SegmentMatcherFactory   create_segment_matcher,
                   RegionSetMatcherFactory create_region_matcher,
                   SummaryState&           st,
-                  UDQState&               udq_state) const;
+                  UDQState&               udq_state,
+                  std::size_t             var_type_mask = ~std::size_t{0}) const;
 
         /// Retrieve defining expression and evaluation object for a single
         /// UDQ
@@ -661,9 +674,13 @@ namespace Opm {
         ///
         /// \param[in,out] context Pattern matchers and state objects.
         /// Values pertaining to UDQs being evaluated here will be updated.
+        ///
+        /// \param[in] var_type_mask Bitmask restricting which UDQ
+        /// categories get evaluated.  See eval() for details.
         void eval_define(std::size_t     report_step,
                          const UDQState& udq_state,
-                         UDQContext&     context) const;
+                         UDQContext&     context,
+                         std::size_t     var_type_mask = ~std::size_t{0}) const;
 
         /// Incorporate an enumerated assignment statement into known UDQ
         /// collection.
