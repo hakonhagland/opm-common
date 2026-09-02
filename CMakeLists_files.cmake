@@ -1179,6 +1179,7 @@ list(APPEND PUBLIC_HEADER_FILES
   opm/input/eclipse/Schedule/RPTConfig.hpp
   opm/input/eclipse/Schedule/RPTKeywordNormalisation.hpp
   opm/input/eclipse/Schedule/RSTConfig.hpp
+  opm/input/eclipse/Schedule/ReservoirCouplingSummaryState.hpp
   opm/input/eclipse/Schedule/ResCoup/GrupSlav.hpp
   opm/input/eclipse/Schedule/ResCoup/MasterGroup.hpp
   opm/input/eclipse/Schedule/ResCoup/MasterMinimumTimeStep.hpp
