@@ -44,6 +44,7 @@
 #include <opm/input/eclipse/Schedule/Group/GSatProd.hpp>
 #include <opm/input/eclipse/Schedule/MSW/Segment.hpp>
 #include <opm/input/eclipse/Schedule/MSW/WellSegments.hpp>
+#include <opm/input/eclipse/Schedule/ResCoup/ReservoirCouplingInfo.hpp>
 #include <opm/input/eclipse/Schedule/Schedule.hpp>
 #include <opm/input/eclipse/Schedule/ScheduleState.hpp>
 #include <opm/input/eclipse/Schedule/SummaryState.hpp>
@@ -2286,8 +2287,43 @@ inline quantity group_liquid_production_target( const fn_args& args )
     return { value, measure::rate };
 }
 
+/// Injection rate target that a reservoir coupling master has imposed on
+/// one of this run's slave groups, if the simulator has stored one.
+///
+/// A slave group's injection target is decided by the master run, not by a
+/// GCONINJE record in the slave's own deck, so the schedule knows nothing
+/// about it.  The simulator stores the target it received from the master
+/// in the summary state under the group's name and the target keyword
+/// (GGIRT, GWIRT), in output units, and this function returns it.
+///
+/// Only groups listed in GRUPSLAV are considered.  For every other group
+/// the target comes from the schedule as usual, so a value left in the
+/// summary state by an earlier evaluation is never mistaken for a new one.
+inline std::optional<double>
+slave_group_injection_target(const fn_args& args, const measure rate_unit)
+{
+    const auto& sched_state = args.schedule[args.sim_step];
+    if (! sched_state.rescoup().hasGrupSlav(args.group_name)) {
+        return std::nullopt;
+    }
+
+    if (! args.st.has_group_var(args.group_name, args.keyword_name)) {
+        return std::nullopt;
+    }
+
+    return args.unit_system.to_si(rate_unit,
+                                  args.st.get_group_var(args.group_name,
+                                                        args.keyword_name));
+}
+
 inline quantity group_gas_injection_target( const fn_args& args )
 {
+    if (const auto target = slave_group_injection_target(args, measure::gas_surface_rate);
+        target.has_value())
+    {
+        return { *target, measure::rate };
+    }
+
     double value = 0.0;
     const auto& groups = args.schedule[args.sim_step].groups;
     if (groups.has(args.group_name)) {
@@ -2301,6 +2337,12 @@ inline quantity group_gas_injection_target( const fn_args& args )
 
 inline quantity group_water_injection_target( const fn_args& args )
 {
+    if (const auto target = slave_group_injection_target(args, measure::liquid_surface_rate);
+        target.has_value())
+    {
+        return { *target, measure::rate };
+    }
+
     double value = 0.0;
     const auto& groups = args.schedule[args.sim_step].groups;
     if (groups.has(args.group_name)) {
