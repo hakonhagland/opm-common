@@ -365,6 +365,12 @@ namespace Opm { namespace data {
         std::map<std::string, ProductionRates> production;
         /// Per master-group, per-phase injection rates (SI units).
         std::map<std::string, std::map<Opm::Phase, InjectionRates>> injection;
+
+        /// Per slave-group, per-phase surface injection rate target in force
+        /// in a slave run (SI units): the target the master imposed, combined
+        /// with the slave's own GCONINJE limit as the group's GRUPSLAV flag
+        /// says.  Filled by a slave run only; reported as GGIRT/GWIRT.
+        std::map<std::string, std::map<Opm::Phase, double>> injection_targets;
     };
 
 }} // Opm::data

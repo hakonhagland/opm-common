@@ -44,7 +44,6 @@
 #include <opm/input/eclipse/Schedule/Group/GSatProd.hpp>
 #include <opm/input/eclipse/Schedule/MSW/Segment.hpp>
 #include <opm/input/eclipse/Schedule/MSW/WellSegments.hpp>
-#include <opm/input/eclipse/Schedule/ResCoup/ReservoirCouplingInfo.hpp>
 #include <opm/input/eclipse/Schedule/Schedule.hpp>
 #include <opm/input/eclipse/Schedule/ScheduleState.hpp>
 #include <opm/input/eclipse/Schedule/SummaryState.hpp>
@@ -2285,42 +2284,42 @@ inline quantity group_liquid_production_target( const fn_args& args )
     return { value, measure::rate };
 }
 
-/// Injection rate target that a reservoir coupling master has imposed on
-/// one of this run's slave groups, if the simulator has stored one.
+/// Injection rate target in force for a slave group of a reservoir
+/// coupling slave run, if the simulator has reported one.
 ///
-/// A slave group's injection target is decided by the master run, not by a
-/// GCONINJE record in the slave's own deck, so the schedule knows nothing
-/// about it.  The simulator stores the target it received from the master
-/// in the summary state under the group's name and the target keyword
-/// (GGIRT, GWIRT), in output units, and this function returns it as a
-/// quantity in the given surface-rate measure.
-///
-/// Only groups listed in GRUPSLAV are considered.  For every other group
-/// the target comes from the schedule as usual, so a value left in the
-/// summary state by an earlier evaluation is never mistaken for a new one.
+/// A slave group's injection target is decided by the master run, combined
+/// with the slave's own GCONINJE limit as the group's GRUPSLAV flag says, so
+/// the schedule alone cannot know it.  The simulator reports the target in
+/// force through the reservoir coupling data handed to Summary::eval(),
+/// per group and phase in SI units, and this function returns it as a
+/// quantity in the given surface-rate measure.  Groups without a reported
+/// target -- every group of a non-coupled run, and a slave group whose own
+/// deck limit applies -- get their target from the schedule as usual.
 inline std::optional<quantity>
-slave_group_injection_target(const fn_args& args, const measure rate_unit)
+slave_group_injection_target(const fn_args& args,
+                             const Opm::Phase phase,
+                             const measure rate_unit)
 {
-    const auto& sched_state = args.schedule[args.sim_step];
-    if (! sched_state.rescoup().hasGrupSlav(args.group_name)) {
+    if (args.rc_rates == nullptr) {
         return std::nullopt;
     }
 
-    if (! args.st.has_group_var(args.group_name, args.keyword_name)) {
+    const auto groupPos = args.rc_rates->injection_targets.find(args.group_name);
+    if (groupPos == args.rc_rates->injection_targets.end()) {
         return std::nullopt;
     }
 
-    // Convert with, and report in, the same surface-rate measure: the value
-    // is stored in output units and must come back unchanged.  Returning it
-    // as measure::rate (reservoir volume per time) would in FIELD units turn
-    // a gas target in Mscf/day into stb/day on the way out.
-    const auto stored = args.st.get_group_var(args.group_name, args.keyword_name);
-    return quantity { args.unit_system.to_si(rate_unit, stored), rate_unit };
+    const auto phasePos = groupPos->second.find(phase);
+    if (phasePos == groupPos->second.end()) {
+        return std::nullopt;
+    }
+
+    return quantity { phasePos->second, rate_unit };
 }
 
 inline quantity group_gas_injection_target( const fn_args& args )
 {
-    if (const auto target = slave_group_injection_target(args, measure::gas_surface_rate);
+    if (const auto target = slave_group_injection_target(args, Opm::Phase::GAS, measure::gas_surface_rate);
         target.has_value())
     {
         return *target;
@@ -2339,7 +2338,7 @@ inline quantity group_gas_injection_target( const fn_args& args )
 
 inline quantity group_water_injection_target( const fn_args& args )
 {
-    if (const auto target = slave_group_injection_target(args, measure::liquid_surface_rate);
+    if (const auto target = slave_group_injection_target(args, Opm::Phase::WATER, measure::liquid_surface_rate);
         target.has_value())
     {
         return *target;

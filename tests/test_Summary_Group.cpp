@@ -311,9 +311,9 @@ BOOST_AUTO_TEST_SUITE_END()
 
 namespace {
 
-// Two injection groups.  G_1 is a reservoir coupling slave group (GRUPSLAV),
-// G_2 an ordinary group.  Both have a GCONINJE gas and water rate target in
-// the deck.
+// Two injection groups, both with a GCONINJE gas and water rate target in
+// the deck.  In the test G_1 plays the reservoir coupling slave group whose
+// target in force is reported by the simulator; G_2 is an ordinary group.
 std::string slaveGroupDeck(const std::string& unit_system)
 {
     return R"(RUNSPEC
@@ -353,9 +353,6 @@ GRUPTREE
   'G_1' 'FIELD' /
   'G_2' 'FIELD' /
 /
-GRUPSLAV
-  'G_1' 'M_1' /
-/
 GCONINJE
   'G_1' 'GAS'   'RATE' 500 /
   'G_1' 'WATER' 'RATE' 600 /
@@ -385,9 +382,7 @@ struct SlaveGroupSetup
         : deck     { Parser{}.parseString(slaveGroupDeck(unit_system)) }
         , es       { deck }
         , grid     { es.getInputGrid() }
-        , schedule { deck, es, std::make_shared<Python>(),
-                     /* lowActionParsingStrictness = */ false,
-                     /* slave_mode = */ true }
+        , schedule { deck, es, std::make_shared<Python>() }
         , config   { deck, schedule, es.fieldProps(), es.aquifer() }
         , name     { toupper(std::move(case_name)) }
         , ta       { "test_summary_slave_group_target" }
@@ -398,15 +393,14 @@ struct SlaveGroupSetup
 
 BOOST_AUTO_TEST_SUITE(SlaveGroupInjectionTarget)
 
-// A value the simulator has stored for a GRUPSLAV group is reported as that
-// group's GGIRT/GWIRT.  For any other group, and for a slave group without a
-// stored value, the target still comes from the schedule.
+// A target the simulator reports for a group through the reservoir coupling
+// data is reported as that group's GGIRT/GWIRT.  Any other group, and a
+// group without a reported target, still gets the schedule's target.
 //
-// Run in both METRIC and FIELD units: the stored value is in output units
-// and must come back unchanged, which in FIELD units only holds if the
-// evaluator returns it with the surface-rate measure it was converted with
-// (gas: Mscf/day, not the reservoir rb/day of measure::rate).
-BOOST_AUTO_TEST_CASE(stored_value_only_for_slave_groups)
+// Run in both METRIC and FIELD units: the reported target is in SI and must
+// come out in the summary's own unit for the phase (gas: Mscf/day in FIELD,
+// not the reservoir stb/day of measure::rate).
+BOOST_AUTO_TEST_CASE(reported_target_only_for_slave_groups)
 {
     for (const auto* unit_system : { "METRIC", "FIELD" }) {
         BOOST_TEST_CONTEXT("Unit system " << unit_system) {
@@ -423,26 +417,28 @@ BOOST_AUTO_TEST_CASE(stored_value_only_for_slave_groups)
             values.wbp = &cfg.wbp;
             values.group_and_nwrk_solution = &cfg.grp_nwrk;
 
-            // Values "stored by the simulator", in output units (SM3/day
-            // and Mscf/day, or stb/day and Mscf/day).
-            st.update_group_var("G_1", "GGIRT", 1234.0);
-            st.update_group_var("G_1", "GWIRT", 2345.0);
-            st.update_group_var("G_2", "GGIRT", 999.0);
-            st.update_group_var("G_2", "GWIRT", 888.0);
+            // Targets "in force", as the simulator reports them: SI, from
+            // 1234 and 2345 in the deck's own surface-rate units.
+            using M = UnitSystem::measure;
+            const auto& units = cfg.es.getUnits();
+            auto rc = data::ReservoirCouplingGroupRates{};
+            rc.injection_targets["G_1"][Phase::GAS]   = units.to_si(M::gas_surface_rate,    1234.0);
+            rc.injection_targets["G_1"][Phase::WATER] = units.to_si(M::liquid_surface_rate, 2345.0);
+            values.rc_group_rates = &rc;
 
             writer.eval(/* report_step = */ 1, /* secs_elapsed = */ 1.0*day, values, st);
 
-            // Slave group: the stored value is reported, unchanged.
+            // Reported target: comes out unchanged, in the deck's units.
             BOOST_CHECK_CLOSE(st.get_group_var("G_1", "GGIRT"), 1234.0, 1.0e-10);
             BOOST_CHECK_CLOSE(st.get_group_var("G_1", "GWIRT"), 2345.0, 1.0e-10);
 
-            // Ordinary group: the schedule wins, whatever was stored before.
+            // Ordinary group: the schedule.
             BOOST_CHECK_CLOSE(st.get_group_var("G_2", "GGIRT"), 200.0, 1.0e-10);
             BOOST_CHECK_CLOSE(st.get_group_var("G_2", "GWIRT"), 300.0, 1.0e-10);
 
-            // Slave group without a stored value: back to the schedule.
-            st.erase_group_var("G_1", "GGIRT");
-            st.erase_group_var("G_1", "GWIRT");
+            // No reported target any more: back to the schedule, whatever
+            // the previous evaluation left in the summary state.
+            values.rc_group_rates = nullptr;
 
             writer.eval(/* report_step = */ 1, /* secs_elapsed = */ 2.0*day, values, st);
 
