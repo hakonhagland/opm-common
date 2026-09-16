@@ -2292,12 +2292,13 @@ inline quantity group_liquid_production_target( const fn_args& args )
 /// GCONINJE record in the slave's own deck, so the schedule knows nothing
 /// about it.  The simulator stores the target it received from the master
 /// in the summary state under the group's name and the target keyword
-/// (GGIRT, GWIRT), in output units, and this function returns it.
+/// (GGIRT, GWIRT), in output units, and this function returns it as a
+/// quantity in the given surface-rate measure.
 ///
 /// Only groups listed in GRUPSLAV are considered.  For every other group
 /// the target comes from the schedule as usual, so a value left in the
 /// summary state by an earlier evaluation is never mistaken for a new one.
-inline std::optional<double>
+inline std::optional<quantity>
 slave_group_injection_target(const fn_args& args, const measure rate_unit)
 {
     const auto& sched_state = args.schedule[args.sim_step];
@@ -2309,9 +2310,12 @@ slave_group_injection_target(const fn_args& args, const measure rate_unit)
         return std::nullopt;
     }
 
-    return args.unit_system.to_si(rate_unit,
-                                  args.st.get_group_var(args.group_name,
-                                                        args.keyword_name));
+    // Convert with, and report in, the same surface-rate measure: the value
+    // is stored in output units and must come back unchanged.  Returning it
+    // as measure::rate (reservoir volume per time) would in FIELD units turn
+    // a gas target in Mscf/day into stb/day on the way out.
+    const auto stored = args.st.get_group_var(args.group_name, args.keyword_name);
+    return quantity { args.unit_system.to_si(rate_unit, stored), rate_unit };
 }
 
 inline quantity group_gas_injection_target( const fn_args& args )
@@ -2319,7 +2323,7 @@ inline quantity group_gas_injection_target( const fn_args& args )
     if (const auto target = slave_group_injection_target(args, measure::gas_surface_rate);
         target.has_value())
     {
-        return { *target, measure::rate };
+        return *target;
     }
 
     double value = 0.0;
@@ -2338,7 +2342,7 @@ inline quantity group_water_injection_target( const fn_args& args )
     if (const auto target = slave_group_injection_target(args, measure::liquid_surface_rate);
         target.has_value())
     {
-        return { *target, measure::rate };
+        return *target;
     }
 
     double value = 0.0;

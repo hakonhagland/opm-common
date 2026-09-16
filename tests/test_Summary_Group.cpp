@@ -314,11 +314,12 @@ namespace {
 // Two injection groups.  G_1 is a reservoir coupling slave group (GRUPSLAV),
 // G_2 an ordinary group.  Both have a GCONINJE gas and water rate target in
 // the deck.
-std::string slaveGroupDeck()
+std::string slaveGroupDeck(const std::string& unit_system)
 {
     return R"(RUNSPEC
 DIMENS
  2 1 1 /
+)" + unit_system + R"(
 OIL
 GAS
 WATER
@@ -380,8 +381,8 @@ struct SlaveGroupSetup
     std::string name;
     WorkArea ta;
 
-    explicit SlaveGroupSetup(std::string case_name)
-        : deck     { Parser{}.parseString(slaveGroupDeck()) }
+    explicit SlaveGroupSetup(std::string case_name, const std::string& unit_system)
+        : deck     { Parser{}.parseString(slaveGroupDeck(unit_system)) }
         , es       { deck }
         , grid     { es.getInputGrid() }
         , schedule { deck, es, std::make_shared<Python>(),
@@ -400,45 +401,55 @@ BOOST_AUTO_TEST_SUITE(SlaveGroupInjectionTarget)
 // A value the simulator has stored for a GRUPSLAV group is reported as that
 // group's GGIRT/GWIRT.  For any other group, and for a slave group without a
 // stored value, the target still comes from the schedule.
+//
+// Run in both METRIC and FIELD units: the stored value is in output units
+// and must come back unchanged, which in FIELD units only holds if the
+// evaluator returns it with the surface-rate measure it was converted with
+// (gas: Mscf/day, not the reservoir rb/day of measure::rate).
 BOOST_AUTO_TEST_CASE(stored_value_only_for_slave_groups)
 {
-    SlaveGroupSetup cfg{"SLAVE_GROUP_TARGET"};
+    for (const auto* unit_system : { "METRIC", "FIELD" }) {
+        BOOST_TEST_CONTEXT("Unit system " << unit_system) {
+            SlaveGroupSetup cfg{"SLAVE_GROUP_TARGET", unit_system};
 
-    auto writer = out::Summary {
-        cfg.config, cfg.es, cfg.grid, cfg.schedule, cfg.name
-    };
+            auto writer = out::Summary {
+                cfg.config, cfg.es, cfg.grid, cfg.schedule, cfg.name
+            };
 
-    auto st = SummaryState { TimeService::now(), 0.0 };
+            auto st = SummaryState { TimeService::now(), 0.0 };
 
-    auto values = out::Summary::DynamicSimulatorState{};
-    values.well_solution = &cfg.wells;
-    values.wbp = &cfg.wbp;
-    values.group_and_nwrk_solution = &cfg.grp_nwrk;
+            auto values = out::Summary::DynamicSimulatorState{};
+            values.well_solution = &cfg.wells;
+            values.wbp = &cfg.wbp;
+            values.group_and_nwrk_solution = &cfg.grp_nwrk;
 
-    // Values "stored by the simulator", in output units (metric: SM3/day).
-    st.update_group_var("G_1", "GGIRT", 1234.0);
-    st.update_group_var("G_1", "GWIRT", 2345.0);
-    st.update_group_var("G_2", "GGIRT", 999.0);
-    st.update_group_var("G_2", "GWIRT", 888.0);
+            // Values "stored by the simulator", in output units (SM3/day
+            // and Mscf/day, or stb/day and Mscf/day).
+            st.update_group_var("G_1", "GGIRT", 1234.0);
+            st.update_group_var("G_1", "GWIRT", 2345.0);
+            st.update_group_var("G_2", "GGIRT", 999.0);
+            st.update_group_var("G_2", "GWIRT", 888.0);
 
-    writer.eval(/* report_step = */ 1, /* secs_elapsed = */ 1.0*day, values, st);
+            writer.eval(/* report_step = */ 1, /* secs_elapsed = */ 1.0*day, values, st);
 
-    // Slave group: the stored value is reported.
-    BOOST_CHECK_CLOSE(st.get_group_var("G_1", "GGIRT"), 1234.0, 1.0e-10);
-    BOOST_CHECK_CLOSE(st.get_group_var("G_1", "GWIRT"), 2345.0, 1.0e-10);
+            // Slave group: the stored value is reported, unchanged.
+            BOOST_CHECK_CLOSE(st.get_group_var("G_1", "GGIRT"), 1234.0, 1.0e-10);
+            BOOST_CHECK_CLOSE(st.get_group_var("G_1", "GWIRT"), 2345.0, 1.0e-10);
 
-    // Ordinary group: the schedule wins, whatever was stored before.
-    BOOST_CHECK_CLOSE(st.get_group_var("G_2", "GGIRT"), 200.0, 1.0e-10);
-    BOOST_CHECK_CLOSE(st.get_group_var("G_2", "GWIRT"), 300.0, 1.0e-10);
+            // Ordinary group: the schedule wins, whatever was stored before.
+            BOOST_CHECK_CLOSE(st.get_group_var("G_2", "GGIRT"), 200.0, 1.0e-10);
+            BOOST_CHECK_CLOSE(st.get_group_var("G_2", "GWIRT"), 300.0, 1.0e-10);
 
-    // Slave group without a stored value: back to the schedule.
-    st.erase_group_var("G_1", "GGIRT");
-    st.erase_group_var("G_1", "GWIRT");
+            // Slave group without a stored value: back to the schedule.
+            st.erase_group_var("G_1", "GGIRT");
+            st.erase_group_var("G_1", "GWIRT");
 
-    writer.eval(/* report_step = */ 1, /* secs_elapsed = */ 2.0*day, values, st);
+            writer.eval(/* report_step = */ 1, /* secs_elapsed = */ 2.0*day, values, st);
 
-    BOOST_CHECK_CLOSE(st.get_group_var("G_1", "GGIRT"), 500.0, 1.0e-10);
-    BOOST_CHECK_CLOSE(st.get_group_var("G_1", "GWIRT"), 600.0, 1.0e-10);
+            BOOST_CHECK_CLOSE(st.get_group_var("G_1", "GGIRT"), 500.0, 1.0e-10);
+            BOOST_CHECK_CLOSE(st.get_group_var("G_1", "GWIRT"), 600.0, 1.0e-10);
+        }
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()
